@@ -7,7 +7,7 @@ jobs:
     name: Swift ${{ matrix.swift }} on ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-15]
         swift: ["5", "6"]
     runs-on: ${{ matrix.os }}
     steps:
