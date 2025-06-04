@@ -13,7 +13,7 @@ import Foundation
 struct SSEParserResilienceTests {
     
     @Test("Parser should ignore invalid field names")
-    func testInvalidFields() async throws {
+    func invalidFields() async throws {
         let bytes = try await SSETestData.invalidFields.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -23,7 +23,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should handle unusual whitespace")
-    func testUnusualWhitespace() async throws {
+    func unusualWhitespace() async throws {
         let bytes = try await SSETestData.unusualWhitespace.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -41,7 +41,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should normalize mixed line endings")
-    func testMixedLineEndings() async throws {
+    func mixedLineEndings() async throws {
         let bytes = try await SSETestData.mixedLineEndings.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -52,7 +52,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should ignore almost-valid fields")
-    func testAlmostValidFields() async throws {
+    func almostValidFields() async throws {
         let bytes = try await SSETestData.almostValidFields.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -62,7 +62,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should handle Unicode whitespace")
-    func testUnicodeWhitespace() async throws {
+    func unicodeWhitespace() async throws {
         let bytes = try await SSETestData.unicodeWhitespace.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -78,7 +78,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should process all resilience tests without crashing")
-    func testAllResilienceTests() async throws {
+    func allResilienceTests() async throws {
         for testCase in SSETestData.allResilienceTests {
             let bytes = try await testCase.asyncBytes
             let sse = AsyncServerSentEvents(bytes: bytes)
@@ -89,7 +89,7 @@ struct SSEParserResilienceTests {
     }
     
     @Test("Parser should maintain state across malformed input")
-    func testStateAfterMalformedInput() async throws {
+    func stateAfterMalformedInput() async throws {
         // Combine invalid fields with a valid event
         let testData = """
         invalid-field:test

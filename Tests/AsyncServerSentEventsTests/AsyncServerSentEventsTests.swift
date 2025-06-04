@@ -17,7 +17,7 @@ extension String {
 struct SSEParsingTests {
 
     @Test("Basic events should parse into Event structs")
-    func testBasicEvents() async throws {
+    func basicEvents() async throws {
         let bytes = try await SSETestData.basicEvents.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -38,7 +38,7 @@ struct SSEParsingTests {
     }
 
     @Test("Events with IDs should parse ID field")
-    func testEventIds() async throws {
+    func eventIds() async throws {
         let bytes = try await SSETestData.eventIds.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -63,7 +63,7 @@ struct SSEParsingTests {
     }
 
     @Test("Named events should parse event field")
-    func testNamedEvents() async throws {
+    func namedEvents() async throws {
         let bytes = try await SSETestData.namedEvents.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -84,7 +84,7 @@ struct SSEParsingTests {
     }
 
     @Test("Comments should parse into comment field")
-    func testComments() async throws {
+    func comments() async throws {
         let bytes = try await SSETestData.comments.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -103,7 +103,7 @@ struct SSEParsingTests {
     }
 
     @Test("Multiple data fields should concatenate with newlines")
-    func testMultipleDataFields() async throws {
+    func multipleDataFields() async throws {
         let bytes = try await SSETestData.multipleDataFields.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -120,7 +120,7 @@ struct SSEParsingTests {
     }
 
     @Test("Mixed fields should parse all fields correctly")
-    func testMixedFields() async throws {
+    func mixedFields() async throws {
         let bytes = try await SSETestData.mixedFields.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -137,7 +137,7 @@ struct SSEParsingTests {
     }
 
     @Test("Special characters should be preserved in all fields")
-    func testSpecialCharacters() async throws {
+    func specialCharacters() async throws {
         let bytes = try await SSETestData.specialCharacters.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -152,7 +152,7 @@ struct SSEParsingTests {
     }
 
     @Test("Complete event should parse all fields")
-    func testCompleteEvent() async throws {
+    func completeEvent() async throws {
         let bytes = try await SSETestData.completeEvent.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -169,7 +169,7 @@ struct SSEParsingTests {
     }
 
     @Test("Empty data fields should create empty events")
-    func testEmptyDataFields() async throws {
+    func emptyDataFields() async throws {
         let bytes = try await SSETestData.emptyDataFields.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
@@ -193,7 +193,7 @@ struct SSEParsingTests {
     }
 
     @Test("Events should be Hashable")
-    func testEventHashable() async throws {
+    func eventHashable() async throws {
         let event1 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
         let event2 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
         let event3 = AsyncServerSentEvents.Event(id: "2", name: "test", comment: "comment", data: "data")
