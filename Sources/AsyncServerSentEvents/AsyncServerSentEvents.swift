@@ -124,9 +124,11 @@ public struct AsyncServerSentEvents: AsyncSequence {
                 let emptyEvent = Event(data: "")
                 var event = emptyEvent
                 for try await line in lines {
-                    if line.allSatisfy(\.isWhitespace) {
-                        if event != emptyEvent {
-                            event.trim()
+                    if line.isEmpty {
+                        if !event.data.isEmpty {
+                            if event.data.hasSuffix("\n") {
+                                event.data.removeLast()
+                            }
                             continuation.yield(event)
                         }
                         event = emptyEvent
@@ -136,9 +138,7 @@ public struct AsyncServerSentEvents: AsyncSequence {
                             elements.append("")
                         }
 
-                        let field = elements[0]
-                            .trimmingCharacters(in: .whitespaces)
-                            .lowercased()
+                        let field = String(elements[0])
                         var value = String(elements[1])
                         if value.first == " " {
                             value.removeFirst()
@@ -146,28 +146,19 @@ public struct AsyncServerSentEvents: AsyncSequence {
 
                         switch field {
                         case "id":
-                            let trimmed = value.trimmingCharacters(in: .whitespaces)
-                            if !trimmed.isEmpty {
-                                event.id = trimmed
+                            if !value.contains("\0") {
+                                event.id = value
                             }
                         case "event":
-                            let trimmed = value.trimmingCharacters(in: .whitespaces)
-                            if !trimmed.isEmpty {
-                                event.name = trimmed
-                            }
+                            event.name = value
                         case "":
-                            event.appending(commentLine: value)
+                            continue
                         case "data":
                             event.appending(dataLine: value)
                         default:
                             continue
                         }
                     }
-                }
-
-                if event != emptyEvent {
-                    event.trim()
-                    continuation.yield(event)
                 }
 
                 continuation.finish()

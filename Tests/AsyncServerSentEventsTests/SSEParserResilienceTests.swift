@@ -30,12 +30,7 @@ struct SSEParserResilienceTests {
 
         try #require(events.count == 1)
 
-        let expectedData = """
-        tab after colon
-            many spaces after colon
-        tab before colon
-        many spaces before field
-        """
+        let expectedData = "\ttab after colon\n    many spaces after colon"
 
         #expect(events[0].data == expectedData)
     }
@@ -69,10 +64,7 @@ struct SSEParserResilienceTests {
 
         try #require(events.count == 1)
 
-        let expectedData = """
-        zero-width space
-        \u{3000}ideographic space
-        """
+        let expectedData = "\u{200B}zero-width space\n\u{3000}ideographic space\n\u{3000}"
 
         #expect(events[0].data == expectedData)
     }
@@ -105,16 +97,9 @@ struct SSEParserResilienceTests {
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
-        try #require(events.count == 3)
+        try #require(events.count == 1)
 
-        // All events should be parsed
-        #expect(events[0].data == "wrong case")
-        #expect(events[0].id == nil)
-
-        #expect(events[1].data == "valid event")
-        #expect(events[1].id == "123")
-
-        #expect(events[2].data == "mixed case")
-        #expect(events[2].id == nil)
+        #expect(events[0].data == "valid event")
+        #expect(events[0].id == "123")
     }
 }

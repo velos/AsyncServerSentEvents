@@ -198,6 +198,9 @@ public enum SSETestData {
     
     """
 
+    /// Tests missing trailing blank line
+    public static let noTrailingBlankLine = "data:unfinished event"
+
     // MARK: - Parser Resilience Tests
 
     /// Tests handling of invalid field names
@@ -266,7 +269,8 @@ public enum SSETestData {
             lineEndings,
             lineEndingVariants,
             multipleEmptyLines,
-            whitespaceOnlyLines
+            whitespaceOnlyLines,
+            noTrailingBlankLine
         ]
     }
 

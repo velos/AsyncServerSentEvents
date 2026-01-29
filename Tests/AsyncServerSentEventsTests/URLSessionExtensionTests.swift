@@ -9,11 +9,8 @@ struct URLSessionExtensionTests {
     init() throws {
         let tempFile = FileManager.default.temporaryDirectory
                             .appendingPathComponent(UUID().uuidString)
-        try """
-        data: hello
-        id: 123
-        event: message
-        """.data(using: .utf8)!.write(to: tempFile)
+        let body = "data: hello\nid: 123\nevent: message\n\n"
+        try body.data(using: .utf8)!.write(to: tempFile)
 
         localFileUrl = tempFile
     }

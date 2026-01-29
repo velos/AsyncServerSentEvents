@@ -3,11 +3,26 @@ import Foundation
 @testable import AsyncServerSentEvents
 
 extension String {
+    var unindented: String {
+        let lines = components(separatedBy: "\n")
+        let stripped = lines.map { line -> String in
+            if line.hasPrefix("    ") {
+                return String(line.dropFirst(4))
+            }
+            return line
+        }
+        return stripped.joined(separator: "\n")
+    }
+
     var asyncBytes: URLSession.AsyncBytes {
         get async throws {
             let tempFile = FileManager.default.temporaryDirectory
                             .appendingPathComponent(UUID().uuidString)
-            try data(using: .utf8)!.write(to: tempFile)
+            var normalized = unindented
+            if normalized.hasSuffix("\n") && !normalized.hasSuffix("\n\n") {
+                normalized.append("\n")
+            }
+            try normalized.data(using: .utf8)!.write(to: tempFile)
             return try await URLSession.shared.bytes(from: tempFile).0
         }
     }
@@ -50,15 +65,15 @@ struct SSEParsingTests {
         #expect(events[0].data == "event with id")
 
         // Second event - ID with space
-        #expect(events[1].id == "2")
+        #expect(events[1].id == "2  ")
         #expect(events[1].data == "event with id and space after id")
 
         // Third event - empty ID
-        #expect(events[2].id == nil)
+        #expect(events[2].id == "")
         #expect(events[2].data == "event with empty id")
 
         // Fourth event - colon-only ID
-        #expect(events[3].id == nil)
+        #expect(events[3].id == "")
         #expect(events[3].data == "event with just colon id")
     }
 
@@ -79,38 +94,26 @@ struct SSEParsingTests {
         #expect(events[1].data == "named event without space after colon")
 
         // Third event - empty name
-        #expect(events[2].name == nil)
+        #expect(events[2].name == "")
         #expect(events[2].data == "event with empty name")
     }
 
-    @Test("Comments should parse into comment field")
+    @Test("Comments should be ignored")
     func comments() async throws {
         let bytes = try await SSETestData.comments.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
-        try #require(events.count == 1)
-
-        // All comments concatenated
-        let expectedComment = """
-        this is a comment
-        this is a comment with space
-
-        :nested comment
-        """
-        #expect(events[0].comment == expectedComment)  // Last comment in the event
-        #expect(events[0].data.isEmpty)  // No data fields
+        #expect(events.isEmpty)
     }
 
-    @Test("Comment-only events should emit a comment")
+    @Test("Comment-only blocks should not emit events")
     func commentOnlyEvent() async throws {
         let bytes = try await SSETestData.commentOnlyEvent.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
-        try #require(events.count == 1)
-        #expect(events[0].comment == "only comment\n\nsecond comment")
-        #expect(events[0].data.isEmpty)
+        #expect(events.isEmpty)
     }
 
     @Test("Multiple data fields should concatenate with newlines")
@@ -140,7 +143,7 @@ struct SSEParsingTests {
 
         #expect(events[0].id == "42")  // First and only ID field
         #expect(events[0].name == "update")  // First and only event field
-        #expect(events[0].comment == "comment in middle")  // Last comment field
+        #expect(events[0].comment == nil)
         #expect(events[0].data == """
         mixed field event
         more data
@@ -196,7 +199,7 @@ struct SSEParsingTests {
         let events = try await sse.collect()
 
         try #require(events.count == 1)
-        #expect(events[0].data.isEmpty)
+        #expect(events[0].data == "\n\n")
     }
 
     @Test("Parser should handle [DONE] data")
@@ -227,6 +230,15 @@ struct SSEParsingTests {
         #expect(events[4].data == "fifth")
     }
 
+    @Test("Missing trailing blank line should discard final event")
+    func noTrailingBlankLine() async throws {
+        let bytes = try await SSETestData.noTrailingBlankLine.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        #expect(events.isEmpty)
+    }
+
     @Test("Events should be Hashable")
     func eventHashable() async throws {
         let event1 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
@@ -243,14 +255,13 @@ struct SSEParsingTests {
         #expect(eventSet.contains(event3))
     }
 
-    @Test("Whitespace-only lines should delimit events")
+    @Test("Whitespace-only lines should be ignored")
     func whitespaceOnlyLines() async throws {
         let bytes = try await SSETestData.whitespaceOnlyLines.asyncBytes
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
-        try #require(events.count == 2)
-        #expect(events[0].data == "first event")
-        #expect(events[1].data == "second event")
+        try #require(events.count == 1)
+        #expect(events[0].data == "first event\nsecond event")
     }
 }
