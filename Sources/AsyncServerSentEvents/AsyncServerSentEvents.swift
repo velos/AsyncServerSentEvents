@@ -6,6 +6,87 @@ public struct AsyncServerSentEvents: AsyncSequence {
     public typealias Element = Event
     typealias Continuation = AsyncStream<Element>.Continuation
 
+    private struct LineSplitter: AsyncSequence {
+        typealias Element = String
+
+        let bytes: URLSession.AsyncBytes
+
+        struct AsyncIterator: AsyncIteratorProtocol {
+            var iterator: URLSession.AsyncBytes.AsyncIterator
+            var buffer: [UInt8] = []
+            var pendingLine: String?
+            var sawCarriageReturn = false
+
+            mutating func next() async throws -> String? {
+                if let line = pendingLine {
+                    pendingLine = nil
+                    return line
+                }
+
+                while let byte = try await iterator.next() {
+                    if sawCarriageReturn {
+                        sawCarriageReturn = false
+                        if byte == 10 {
+                            let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                            buffer.removeAll(keepingCapacity: true)
+                            return line
+                        }
+
+                        let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                        buffer.removeAll(keepingCapacity: true)
+
+                        if byte == 13 {
+                            sawCarriageReturn = true
+                            pendingLine = ""
+                            return line
+                        }
+
+                        if byte == 10 {
+                            return line
+                        }
+
+                        buffer.append(byte)
+                        return line
+                    }
+
+                    if byte == 10 {
+                        let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                        buffer.removeAll(keepingCapacity: true)
+                        return line
+                    }
+
+                    if byte == 13 {
+                        sawCarriageReturn = true
+                        let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                        buffer.removeAll(keepingCapacity: true)
+                        return line
+                    }
+
+                    buffer.append(byte)
+                }
+
+                if sawCarriageReturn {
+                    sawCarriageReturn = false
+                    let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                    buffer.removeAll(keepingCapacity: true)
+                    return line
+                }
+
+                if buffer.isEmpty {
+                    return nil
+                }
+
+                let line = String(bytes: buffer, encoding: .utf8) ?? ""
+                buffer.removeAll(keepingCapacity: true)
+                return line
+            }
+        }
+
+        func makeAsyncIterator() -> AsyncIterator {
+            AsyncIterator(iterator: bytes.makeAsyncIterator())
+        }
+    }
+
     public struct Event: Hashable, Sendable, Equatable {
         public var id: String?
         public var name: String?
@@ -38,27 +119,17 @@ public struct AsyncServerSentEvents: AsyncSequence {
 
         Task { [continuation] in
             do {
-                let lines = try await bytes
-                    .split({ elements in
-                        if elements == [10, 13] {
-                            return [10, 13]
-                        } else if elements.first == 10 {
-                            return [10]
-                        } else if elements.first == 13 {
-                            return [13]
-                        }
-                        return nil
-                    }, window: 2, omittingEmptySubsequences: false)
-                    .compactMap { String(bytes: $0, encoding: .utf8) }
+                let lines = LineSplitter(bytes: bytes)
 
-                var event = Event(data: "")
+                let emptyEvent = Event(data: "")
+                var event = emptyEvent
                 for try await line in lines {
-                    if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if event != Event(data: "") {
+                    if line.allSatisfy(\.isWhitespace) {
+                        if event != emptyEvent {
                             event.trim()
                             continuation.yield(event)
                         }
-                        event = Event(data: "")
+                        event = emptyEvent
                     } else {
                         var elements = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
                         if elements.count == 1 {
@@ -68,19 +139,21 @@ public struct AsyncServerSentEvents: AsyncSequence {
                         let field = elements[0]
                             .trimmingCharacters(in: .whitespaces)
                             .lowercased()
-                        let value = String(
-                            elements[1]
-                                .trimmingCharacters(in: .whitespaces)
-                        )
+                        var value = String(elements[1])
+                        if value.first == " " {
+                            value.removeFirst()
+                        }
 
                         switch field {
                         case "id":
-                            if !value.isEmpty {
-                                event.id = value
+                            let trimmed = value.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty {
+                                event.id = trimmed
                             }
                         case "event":
-                            if !value.isEmpty {
-                                event.name = value
+                            let trimmed = value.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty {
+                                event.name = trimmed
                             }
                         case "":
                             event.appending(commentLine: value)
@@ -92,7 +165,7 @@ public struct AsyncServerSentEvents: AsyncSequence {
                     }
                 }
 
-                if event != Event(data: "") {
+                if event != emptyEvent {
                     event.trim()
                     continuation.yield(event)
                 }

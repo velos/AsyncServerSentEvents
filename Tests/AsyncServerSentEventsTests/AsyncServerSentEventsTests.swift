@@ -27,7 +27,7 @@ struct SSEParsingTests {
         let expectedData = """
         simple event
         event with colon inline
-        event with many spaces after colon
+          event with many spaces after colon
         """
 
         // Single event with concatenated data fields
@@ -102,6 +102,17 @@ struct SSEParsingTests {
         #expect(events[0].data.isEmpty)  // No data fields
     }
 
+    @Test("Comment-only events should emit a comment")
+    func commentOnlyEvent() async throws {
+        let bytes = try await SSETestData.commentOnlyEvent.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 1)
+        #expect(events[0].comment == "only comment\n\nsecond comment")
+        #expect(events[0].data.isEmpty)
+    }
+
     @Test("Multiple data fields should concatenate with newlines")
     func multipleDataFields() async throws {
         let bytes = try await SSETestData.multipleDataFields.asyncBytes
@@ -134,6 +145,16 @@ struct SSEParsingTests {
         mixed field event
         more data
         """)
+    }
+
+    @Test("Data fields with leading spaces should preserve spacing")
+    func dataLeadingSpaces() async throws {
+        let bytes = try await SSETestData.dataLeadingSpaces.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 1)
+        #expect(events[0].data == "first line\n one leading space\n  two leading spaces")
     }
 
     @Test("Special characters should be preserved in all fields")
@@ -192,6 +213,20 @@ struct SSEParsingTests {
         #expect(events[3].data == "[DONE]")
     }
 
+    @Test("Line endings should handle CR, CRLF, and LF")
+    func lineEndingVariants() async throws {
+        let bytes = try await SSETestData.lineEndingVariants.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 5)
+        #expect(events[0].data == "first")
+        #expect(events[1].data == "second")
+        #expect(events[2].data == "third")
+        #expect(events[3].data == "fourth")
+        #expect(events[4].data == "fifth")
+    }
+
     @Test("Events should be Hashable")
     func eventHashable() async throws {
         let event1 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
@@ -206,5 +241,16 @@ struct SSEParsingTests {
         #expect(eventSet.count == 2)
         #expect(eventSet.contains(event1))
         #expect(eventSet.contains(event3))
+    }
+
+    @Test("Whitespace-only lines should delimit events")
+    func whitespaceOnlyLines() async throws {
+        let bytes = try await SSETestData.whitespaceOnlyLines.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 2)
+        #expect(events[0].data == "first event")
+        #expect(events[1].data == "second event")
     }
 }

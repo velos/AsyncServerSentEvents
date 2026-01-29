@@ -60,6 +60,14 @@ public enum SSETestData {
     
     """
 
+    /// Tests comment-only events
+    public static let commentOnlyEvent = """
+    :only comment
+    :
+    : second comment
+    
+    """
+
     // MARK: - Event IDs
 
     /// Tests various event ID formats
@@ -137,6 +145,14 @@ public enum SSETestData {
     
     """
 
+    /// Tests data values with leading spaces after colon
+    public static let dataLeadingSpaces = """
+    data:first line
+    data:  one leading space
+    data:   two leading spaces
+    
+    """
+
     // MARK: - Complete Events
 
     /// Tests events with all possible fields
@@ -160,6 +176,9 @@ public enum SSETestData {
     
     """
 
+    /// Tests CR, CRLF, and LF line endings
+    public static let lineEndingVariants = "data:first\r\rdata:second\r\n\r\ndata:third\n\ndata:fourth\r\rdata:fifth\r\n\r\n"
+
     // MARK: - Edge Cases
 
     /// Tests multiple empty lines between events
@@ -167,6 +186,15 @@ public enum SSETestData {
     
     
     data:after multiple empty lines
+    
+    """
+
+    /// Tests whitespace-only lines as event delimiters
+    public static let whitespaceOnlyLines = """
+    data:first event
+         
+    \t
+    data:second event
     
     """
 
@@ -226,15 +254,19 @@ public enum SSETestData {
             emptyDataFields,
             multipleDataFields,
             comments,
+            commentOnlyEvent,
             eventIds,
             retryIntervals,
             namedEvents,
             mixedFields,
             specialCharacters,
             whitespaceHandling,
+            dataLeadingSpaces,
             completeEvent,
             lineEndings,
-            multipleEmptyLines
+            lineEndingVariants,
+            multipleEmptyLines,
+            whitespaceOnlyLines
         ]
     }
 
