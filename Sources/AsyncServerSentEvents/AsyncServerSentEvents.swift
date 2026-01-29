@@ -6,6 +6,19 @@ public struct AsyncServerSentEvents: AsyncSequence {
     public typealias Element = Event
     typealias Continuation = AsyncStream<Element>.Continuation
 
+    public actor State {
+        public private(set) var retryInterval: Int?
+        public private(set) var lastEventId: String?
+
+        func updateRetryInterval(_ milliseconds: Int) {
+            retryInterval = milliseconds
+        }
+
+        func updateLastEventId(_ value: String) {
+            lastEventId = value
+        }
+    }
+
     private struct LineSplitter: AsyncSequence {
         typealias Element = String
 
@@ -113,11 +126,13 @@ public struct AsyncServerSentEvents: AsyncSequence {
 
     private let stream: AsyncStream<Element>
     private let continuation: Continuation
+    public let state: State
 
     public init(bytes: URLSession.AsyncBytes) {
+        state = State()
         (stream, continuation) = AsyncStream<Element>.makeStream()
 
-        Task { [continuation] in
+        Task { [continuation, state] in
             do {
                 let lines = LineSplitter(bytes: bytes)
 
@@ -148,6 +163,7 @@ public struct AsyncServerSentEvents: AsyncSequence {
                         case "id":
                             if !value.contains("\0") {
                                 event.id = value
+                                await state.updateLastEventId(value)
                             }
                         case "event":
                             event.name = value
@@ -155,6 +171,12 @@ public struct AsyncServerSentEvents: AsyncSequence {
                             continue
                         case "data":
                             event.appending(dataLine: value)
+                        case "retry":
+                            if !value.isEmpty,
+                               value.unicodeScalars.allSatisfy({ $0.value >= 48 && $0.value <= 57 }),
+                               let milliseconds = Int(value) {
+                                await state.updateRetryInterval(milliseconds)
+                            }
                         default:
                             continue
                         }

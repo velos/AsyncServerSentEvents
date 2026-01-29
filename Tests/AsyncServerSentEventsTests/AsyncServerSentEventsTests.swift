@@ -216,6 +216,29 @@ struct SSEParsingTests {
         #expect(events[3].data == "[DONE]")
     }
 
+    @Test("Retry field should update state")
+    func retryFieldState() async throws {
+        let bytes = try await SSETestData.retryIntervals.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        _ = try await sse.collect()
+
+        let retryInterval = await sse.state.retryInterval
+        #expect(retryInterval == 5000)
+    }
+
+    @Test("Last event ID should update state")
+    func lastEventIdState() async throws {
+        let bytes = try await SSETestData.lastEventIdUpdates.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 1)
+        #expect(events[0].id == "")
+
+        let lastEventId = await sse.state.lastEventId
+        #expect(lastEventId == "")
+    }
+
     @Test("Line endings should handle CR, CRLF, and LF")
     func lineEndingVariants() async throws {
         let bytes = try await SSETestData.lineEndingVariants.asyncBytes

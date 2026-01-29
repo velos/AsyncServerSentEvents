@@ -13,6 +13,9 @@ let sse = try await URLSession.shared
 for try await event in sse {
     print(event)
 }
+
+let lastEventId = await sse.state.lastEventId
+let retryInterval = await sse.state.retryInterval
 ```
 
 or
@@ -23,6 +26,9 @@ let (sse, response) = try await URLSession.shared.serverSentEvents(from: url)
 for try await event in sse {
     print(event)
 }
+
+let lastEventId = await sse.state.lastEventId
+let retryInterval = await sse.state.retryInterval
 ```
 
 or
@@ -34,6 +40,9 @@ let (sse, response) = try await URLSession.shared.serverSentEvents(for: request)
 for try await event in sse {
     print(event)
 }
+
+let lastEventId = await sse.state.lastEventId
+let retryInterval = await sse.state.retryInterval
 ```
 
 ## Supported Features

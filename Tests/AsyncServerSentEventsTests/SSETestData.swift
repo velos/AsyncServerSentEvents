@@ -98,6 +98,15 @@ public enum SSETestData {
     
     """
 
+    /// Tests last event ID updates
+    public static let lastEventIdUpdates = """
+    id:1
+    
+    id:
+    data:payload
+    
+    """
+
     // MARK: - Named Events
 
     /// Tests events with custom names
@@ -239,6 +248,13 @@ public enum SSETestData {
     dataa:extra letter
     dat:too short
     eventt:misspelled
+    
+    """
+
+    /// Tests id fields with null characters
+    public static let idWithNull = """
+    id:ok\u{0000}bad
+    data:payload
     
     """
 

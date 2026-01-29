@@ -69,6 +69,19 @@ struct SSEParserResilienceTests {
         #expect(events[0].data == expectedData)
     }
 
+    @Test("Parser should ignore id fields with null characters")
+    func idWithNull() async throws {
+        let bytes = try await SSETestData.idWithNull.asyncBytes
+        let sse = AsyncServerSentEvents(bytes: bytes)
+        let events = try await sse.collect()
+
+        try #require(events.count == 1)
+        #expect(events[0].id == nil)
+
+        let lastEventId = await sse.state.lastEventId
+        #expect(lastEventId == nil)
+    }
+
     @Test("Parser should process all resilience tests without crashing")
     func allResilienceTests() async throws {
         for testCase in SSETestData.allResilienceTests {
