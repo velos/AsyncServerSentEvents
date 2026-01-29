@@ -1,6 +1,6 @@
 # AsyncServerSentEvents
 
-An implementation of Server-Sent Events (SSE) for Swift using async sequences. Events are parsed and streamed from the `AsyncBytes` sequence returned via URLSession.
+An implementation of Server-Sent Events (SSE) for Swift using async sequences. Events are parsed from `URLSession.AsyncBytes` and exposed as an `AsyncSequence`.
 
 ## Usage
 
@@ -38,7 +38,8 @@ for try await event in sse {
 
 ## Supported Features
 
-- [x] Basic SSE parsing
-- [x] Event data, id, name and associated comments
-- [ ] Parser error handling
-- [ ] Last Event ID
+- [x] WHATWG-compliant line parsing (`CR`, `LF`, `CRLF`)
+- [x] Strict field parsing (`data`, `id`, `event`) with single-space value trim
+- [x] Comment lines ignored per spec
+- [ ] Retry field handling
+- [ ] Last-Event-ID persistence across events/reconnects
