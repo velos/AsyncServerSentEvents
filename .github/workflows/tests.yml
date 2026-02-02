@@ -11,13 +11,15 @@ jobs:
         swift: ["6.0"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: swift-actions/setup-swift@v2
+      - uses: actions/checkout@v4
+      - name: Setup Swift (Linux only)
+        if: runner.os == 'Linux'
+        uses: swift-actions/setup-swift@v2
         with:
           swift-version: ${{ matrix.swift }}
-      - uses: actions/checkout@v4
       - name: Build
         run: swift build --build-tests
       - name: Run tests
-        run: swift test --enable-test-discovery --parallel
+        run: swift test --parallel
       - name: Test coverage
-        run: swift test --enable-test-discovery --parallel --enable-code-coverage
+        run: swift test --parallel --enable-code-coverage
