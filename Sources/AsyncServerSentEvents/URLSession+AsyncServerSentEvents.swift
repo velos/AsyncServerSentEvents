@@ -1,5 +1,7 @@
-#if canImport(Darwin)
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Errors thrown when a server-sent event connection cannot be established.
 public enum SSEError: Error, Hashable, Sendable {
@@ -38,7 +40,7 @@ enum SSERequest {
         guard http.statusCode == 200 else {
             throw SSEError.unacceptableStatusCode(http.statusCode)
         }
-        let contentType = http.value(forHTTPHeaderField: "Content-Type")
+        let contentType = headerValue(in: http, field: "Content-Type")
         // The media type must be exactly text/event-stream; only parameters may
         // follow (e.g. "text/event-stream; charset=utf-8"). A bare prefix match
         // would wrongly accept types like text/event-stream+json.
@@ -50,46 +52,52 @@ enum SSERequest {
             throw SSEError.unacceptableContentType(contentType)
         }
     }
+
+    /// Case-insensitive header lookup via `allHeaderFields`, which behaves
+    /// consistently across Darwin and corelibs Foundation.
+    static func headerValue(in response: HTTPURLResponse, field: String) -> String? {
+        for (key, value) in response.allHeaderFields {
+            if let key = key as? String, key.caseInsensitiveCompare(field) == .orderedSame {
+                return value as? String
+            }
+        }
+        return nil
+    }
 }
 
+#if canImport(Darwin)
 public extension URLSession.AsyncBytes {
     /// Parses these bytes as a server-sent event stream.
     func sse() -> AsyncServerSentEvents<URLSession.AsyncBytes> {
         AsyncServerSentEvents(bytes: self)
     }
 }
+#endif
 
 public extension URLSession {
     /// Opens a server-sent event stream, sending the `Accept: text/event-stream`
     /// header and validating the response status code and content type.
     ///
+    /// The connection runs on a session derived from this session's
+    /// `configuration`, so streaming works on Linux as well as Apple platforms.
+    ///
     /// - Throws: ``SSEError`` if the response is not a 200 `text/event-stream` response.
-    func serverSentEvents(from url: URL) async throws -> (AsyncServerSentEvents<URLSession.AsyncBytes>, URLResponse) {
+    func serverSentEvents(from url: URL) async throws -> (AsyncServerSentEvents<SSEByteStream>, URLResponse) {
         try await serverSentEvents(for: URLRequest(url: url))
     }
 
     /// Opens a server-sent event stream, sending the `Accept: text/event-stream`
     /// header and validating the response status code and content type.
     ///
-    /// - Throws: ``SSEError`` if the response is not a 200 `text/event-stream` response.
-    func serverSentEvents(for request: URLRequest) async throws -> (AsyncServerSentEvents<URLSession.AsyncBytes>, URLResponse) {
-        try await serverSentEvents(for: request, delegate: nil)
-    }
-
-    /// Opens a server-sent event stream, sending the `Accept: text/event-stream`
-    /// header and validating the response status code and content type.
+    /// The connection runs on a session derived from this session's
+    /// `configuration`, so streaming works on Linux as well as Apple platforms.
     ///
     /// - Throws: ``SSEError`` if the response is not a 200 `text/event-stream` response.
-    func serverSentEvents(from url: URL, delegate: URLSessionTaskDelegate?) async throws -> (AsyncServerSentEvents<URLSession.AsyncBytes>, URLResponse) {
-        try await serverSentEvents(for: URLRequest(url: url), delegate: delegate)
-    }
-
-    /// Opens a server-sent event stream, sending the `Accept: text/event-stream`
-    /// header and validating the response status code and content type.
-    ///
-    /// - Throws: ``SSEError`` if the response is not a 200 `text/event-stream` response.
-    func serverSentEvents(for request: URLRequest, delegate: URLSessionTaskDelegate?) async throws -> (AsyncServerSentEvents<URLSession.AsyncBytes>, URLResponse) {
-        let (bytes, response) = try await bytes(for: SSERequest.prepared(request), delegate: delegate)
+    func serverSentEvents(for request: URLRequest) async throws -> (AsyncServerSentEvents<SSEByteStream>, URLResponse) {
+        let (bytes, response) = try await SSEConnection.open(
+            request: SSERequest.prepared(request),
+            configuration: configuration
+        )
         do {
             try SSERequest.validate(response)
         } catch {
@@ -99,4 +107,3 @@ public extension URLSession {
         return (bytes.sse(), response)
     }
 }
-#endif

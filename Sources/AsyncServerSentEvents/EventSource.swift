@@ -1,5 +1,7 @@
-#if canImport(Darwin)
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A reconnecting server-sent events client modeled on the specification's
 /// `EventSource` interface, exposed as an `AsyncSequence` of ``ServerSentEvent``.
@@ -72,7 +74,7 @@ public struct EventSource: AsyncSequence, Sendable {
         var retryInterval: Int
         var lastEventId: String?
 
-        var current: AsyncServerSentEvents<URLSession.AsyncBytes>.AsyncIterator?
+        var current: AsyncServerSentEvents<SSEByteStream>.AsyncIterator?
         var currentState: SSEState?
         var hasAttemptedConnection = false
         var finished = false
@@ -124,7 +126,7 @@ public struct EventSource: AsyncSequence, Sendable {
         private mutating func connect() async throws {
             hasAttemptedConnection = true
             let preparedRequest = SSERequest.prepared(request, lastEventId: lastEventId)
-            let (bytes, response) = try await session.bytes(for: preparedRequest)
+            let (bytes, response) = try await SSEConnection.open(request: preparedRequest, configuration: session.configuration)
             do {
                 try SSERequest.validate(response)
             } catch {
@@ -152,4 +154,3 @@ public struct EventSource: AsyncSequence, Sendable {
         }
     }
 }
-#endif

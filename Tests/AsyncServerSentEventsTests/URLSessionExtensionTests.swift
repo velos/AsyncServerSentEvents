@@ -1,6 +1,8 @@
-#if canImport(Darwin)
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import AsyncServerSentEvents
 
 @Suite("URLSession Extension Tests")
@@ -141,5 +143,45 @@ struct URLSessionExtensionTests {
 
         try SSERequest.validate(response)
     }
+
+    @Test("Byte stream should parse events across arbitrary chunk boundaries")
+    func byteStreamChunkBoundaries() async throws {
+        let (chunks, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        let task = URLSession.shared.dataTask(with: URLRequest(url: localFileUrl))
+        let bytes = SSEByteStream(task: task, chunks: chunks)
+
+        continuation.yield(Data("data: hel".utf8))
+        continuation.yield(Data()) // empty chunk
+        continuation.yield(Data("lo\nid: 4".utf8))
+        continuation.yield(Data("2\n\ndata: again\n\n".utf8))
+        continuation.finish()
+
+        let events = try await bytes.sse().collect()
+
+        try #require(events.count == 2)
+        #expect(events[0].data == "hello")
+        #expect(events[0].id == "42")
+        #expect(events[1].data == "again")
+        #expect(events[1].lastEventId == "42")
+    }
+
+    @Test("Byte stream should rethrow chunk errors")
+    func byteStreamErrorPropagation() async throws {
+        struct TestError: Error {}
+
+        let (chunks, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        let task = URLSession.shared.dataTask(with: URLRequest(url: localFileUrl))
+        let bytes = SSEByteStream(task: task, chunks: chunks)
+
+        continuation.yield(Data("data: first\n\n".utf8))
+        continuation.finish(throwing: TestError())
+
+        var received: [ServerSentEvent] = []
+        await #expect(throws: TestError.self) {
+            for try await event in bytes.sse() {
+                received.append(event)
+            }
+        }
+        #expect(received.count == 1)
+    }
 }
-#endif

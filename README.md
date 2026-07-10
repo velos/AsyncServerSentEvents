@@ -85,4 +85,4 @@ Each `ServerSentEvent` carries:
 
 ## Platforms
 
-The parser (`AsyncServerSentEvents`, `ServerSentEvent`) builds anywhere Swift and Foundation are available, including Linux. The `URLSession` helpers and `EventSource` require Apple platforms, where `URLSession.AsyncBytes` is available.
+The library works on Apple platforms and Linux. Instead of `URLSession.AsyncBytes` (which is unavailable on Linux), networking is built on `SSEByteStream`, a small delegate-based byte stream over `URLSessionDataTask`, so the parser, the `URLSession` helpers, and `EventSource` all behave identically everywhere. On Apple platforms, `URLSession.AsyncBytes.sse()` remains available as a convenience.
