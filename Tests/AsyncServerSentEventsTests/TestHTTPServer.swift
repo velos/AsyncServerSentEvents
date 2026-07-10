@@ -42,11 +42,11 @@ final class TestHTTPServer: @unchecked Sendable {
         #else
         let socketType = Int32(SOCK_STREAM.rawValue)
         #endif
-        listenSocket = socket(AF_INET, socketType, 0)
-        precondition(listenSocket >= 0, "socket() failed")
+        let socketDescriptor = socket(AF_INET, socketType, 0)
+        precondition(socketDescriptor >= 0, "socket() failed")
 
         var reuse: Int32 = 1
-        setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
 
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -55,22 +55,22 @@ final class TestHTTPServer: @unchecked Sendable {
 
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(listenSocket, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                bind(socketDescriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         precondition(bound == 0, "bind() failed")
-        precondition(listen(listenSocket, 8) == 0, "listen() failed")
+        precondition(listen(socketDescriptor, 8) == 0, "listen() failed")
 
         var assigned = sockaddr_in()
         var length = socklen_t(MemoryLayout<sockaddr_in>.size)
         _ = withUnsafeMutablePointer(to: &assigned) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                getsockname(listenSocket, $0, &length)
+                getsockname(socketDescriptor, $0, &length)
             }
         }
-        port = UInt16(bigEndian: assigned.sin_port)
 
-        let socketDescriptor = listenSocket
+        listenSocket = socketDescriptor
+        port = UInt16(bigEndian: assigned.sin_port)
         var remaining = responses
         let thread = Thread { [weak self] in
             while true {
