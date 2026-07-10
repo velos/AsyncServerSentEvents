@@ -83,7 +83,7 @@ public struct EventSource: AsyncSequence, Sendable {
             while true {
                 if current == nil {
                     if hasAttemptedConnection {
-                        try await Task.sleep(nanoseconds: UInt64(max(0, retryInterval)) * 1_000_000)
+                        try await Task.sleep(nanoseconds: UInt64(Swift.max(0, retryInterval)) * 1_000_000)
                     }
                     do {
                         try await connect()
