@@ -8,37 +8,48 @@ import FoundationNetworking
 @Suite("URLSession Extension Tests")
 struct URLSessionExtensionTests {
 
-    let localFileUrl: URL
+    static let eventBody = "data: hello\nid: 123\nevent: message\n\n"
 
-    init() throws {
-        let tempFile = FileManager.default.temporaryDirectory
-                            .appendingPathComponent(UUID().uuidString)
-        let body = "data: hello\nid: 123\nevent: message\n\n"
-        try body.data(using: .utf8)!.write(to: tempFile)
-
-        localFileUrl = tempFile
-    }
-
-    @Test("sse()")
-    func testSSE() async throws {
-        let (sse, _) = try await URLSession.shared.serverSentEvents(from: localFileUrl)
-        let events = try await sse.collect()
-        #expect(events.count == 1)
-    }
-
-    @Test("serverSentEvents(from:)")
+    @Test("serverSentEvents(from:) should stream events over HTTP")
     func testServerSentEventsFrom() async throws {
-        let (sse, _) = try await URLSession.shared.serverSentEvents(from: localFileUrl)
+        let server = try TestHTTPServer(responses: [.init(body: Self.eventBody)])
+        defer { server.stop() }
+
+        let url = URL(string: "http://127.0.0.1:\(server.port)/sse")!
+        let (sse, response) = try await URLSession.shared.serverSentEvents(from: url)
         let events = try await sse.collect()
-        #expect(events.count == 1)
+
+        try #require(events.count == 1)
+        #expect(events[0].data == "hello")
+        #expect(events[0].id == "123")
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
     }
 
-    @Test("serverSentEvents(for:)")
+    @Test("serverSentEvents(for:) should send the SSE request headers")
     func testServerSentEventsFor() async throws {
-        let request = URLRequest(url: localFileUrl)
+        let server = try TestHTTPServer(responses: [.init(body: Self.eventBody)])
+        defer { server.stop() }
+
+        let request = URLRequest(url: URL(string: "http://127.0.0.1:\(server.port)/sse")!)
         let (sse, _) = try await URLSession.shared.serverSentEvents(for: request)
         let events = try await sse.collect()
+
         #expect(events.count == 1)
+
+        let requests = server.requests
+        try #require(requests.count == 1)
+        #expect(requests[0].lowercased().contains("accept: text/event-stream"))
+    }
+
+    @Test("serverSentEvents should reject non-SSE responses over HTTP")
+    func testRejectsWrongContentTypeOverHTTP() async throws {
+        let server = try TestHTTPServer(responses: [.init(contentType: "text/html", body: "<html></html>")])
+        defer { server.stop() }
+
+        let url = URL(string: "http://127.0.0.1:\(server.port)/sse")!
+        await #expect(throws: SSEError.unacceptableContentType("text/html")) {
+            _ = try await URLSession.shared.serverSentEvents(from: url)
+        }
     }
 
     @Test("Prepared requests should send SSE headers")
@@ -137,7 +148,7 @@ struct URLSessionExtensionTests {
     @Test("Response validation should skip non-HTTP responses")
     func validationSkipsNonHTTP() throws {
         let response = URLResponse(
-            url: localFileUrl, mimeType: "text/plain",
+            url: URL(string: "file:///tmp/stream")!, mimeType: "text/plain",
             expectedContentLength: 0, textEncodingName: nil
         )
 
@@ -147,7 +158,7 @@ struct URLSessionExtensionTests {
     @Test("Byte stream should parse events across arbitrary chunk boundaries")
     func byteStreamChunkBoundaries() async throws {
         let (chunks, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
-        let task = URLSession.shared.dataTask(with: URLRequest(url: localFileUrl))
+        let task = URLSession.shared.dataTask(with: URLRequest(url: URL(string: "https://example.com/sse")!))
         let bytes = SSEByteStream(task: task, chunks: chunks)
 
         continuation.yield(Data("data: hel".utf8))
@@ -170,7 +181,7 @@ struct URLSessionExtensionTests {
         struct TestError: Error {}
 
         let (chunks, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
-        let task = URLSession.shared.dataTask(with: URLRequest(url: localFileUrl))
+        let task = URLSession.shared.dataTask(with: URLRequest(url: URL(string: "https://example.com/sse")!))
         let bytes = SSEByteStream(task: task, chunks: chunks)
 
         continuation.yield(Data("data: first\n\n".utf8))

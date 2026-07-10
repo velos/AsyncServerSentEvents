@@ -82,64 +82,11 @@ public struct AsyncServerSentEvents<Base: AsyncSequence>: AsyncSequence where Ba
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(lines: LineIterator(base: base.makeAsyncIterator()), state: state)
-    }
-
-    /// Splits a byte stream into lines terminated by LF, CR, or CRLF, decoding
-    /// UTF-8 with replacement characters and stripping a single leading BOM,
-    /// as required by the specification.
-    struct LineIterator<BaseIterator: AsyncIteratorProtocol> where BaseIterator.Element == UInt8 {
-        var base: BaseIterator
-        var buffer: [UInt8] = []
-        var sawCarriageReturn = false
-        var isFirstLine = true
-        var atEnd = false
-
-        mutating func next() async throws -> String? {
-            guard !atEnd else { return nil }
-
-            while true {
-                guard let byte = try await base.next() else {
-                    atEnd = true
-                    if buffer.isEmpty {
-                        return nil
-                    }
-                    return makeLine()
-                }
-
-                if sawCarriageReturn {
-                    sawCarriageReturn = false
-                    if byte == 0x0A { // LF completing a CRLF pair
-                        continue
-                    }
-                }
-
-                switch byte {
-                case 0x0A:
-                    return makeLine()
-                case 0x0D:
-                    sawCarriageReturn = true
-                    return makeLine()
-                default:
-                    buffer.append(byte)
-                }
-            }
-        }
-
-        private mutating func makeLine() -> String {
-            defer { buffer.removeAll(keepingCapacity: true) }
-            if isFirstLine {
-                isFirstLine = false
-                if buffer.starts(with: [0xEF, 0xBB, 0xBF]) {
-                    buffer.removeFirst(3)
-                }
-            }
-            return String(decoding: buffer, as: UTF8.self)
-        }
+        AsyncIterator(lines: SSELineIterator(base: base.makeAsyncIterator()), state: state)
     }
 
     public struct AsyncIterator: AsyncIteratorProtocol {
-        var lines: LineIterator<Base.AsyncIterator>
+        var lines: SSELineIterator<Base.AsyncIterator>
         let state: SSEState
 
         /// The last event ID buffer; per spec this persists across events and is
@@ -212,3 +159,61 @@ public struct AsyncServerSentEvents<Base: AsyncSequence>: AsyncSequence where Ba
 }
 
 extension AsyncServerSentEvents: Sendable where Base: Sendable {}
+
+/// Splits a byte stream into lines terminated by LF, CR, or CRLF, decoding
+/// UTF-8 with replacement characters and stripping a single leading BOM,
+/// as required by the specification.
+///
+/// The state machine treats CR as an immediate line terminator and swallows an
+/// LF that directly follows it, so `CR LF` yields one line boundary while
+/// `CR CR` yields two. Only CR, LF, and CRLF are boundaries — other Unicode
+/// line separators (NEL, U+2028, U+2029) are ordinary content bytes per spec.
+struct SSELineIterator<BaseIterator: AsyncIteratorProtocol> where BaseIterator.Element == UInt8 {
+    var base: BaseIterator
+    var buffer: [UInt8] = []
+    var sawCarriageReturn = false
+    var isFirstLine = true
+    var atEnd = false
+
+    mutating func next() async throws -> String? {
+        guard !atEnd else { return nil }
+
+        while true {
+            guard let byte = try await base.next() else {
+                atEnd = true
+                if buffer.isEmpty {
+                    return nil
+                }
+                return makeLine()
+            }
+
+            if sawCarriageReturn {
+                sawCarriageReturn = false
+                if byte == 0x0A { // LF completing a CRLF pair
+                    continue
+                }
+            }
+
+            switch byte {
+            case 0x0A:
+                return makeLine()
+            case 0x0D:
+                sawCarriageReturn = true
+                return makeLine()
+            default:
+                buffer.append(byte)
+            }
+        }
+    }
+
+    private mutating func makeLine() -> String {
+        defer { buffer.removeAll(keepingCapacity: true) }
+        if isFirstLine {
+            isFirstLine = false
+            if buffer.starts(with: [0xEF, 0xBB, 0xBF]) {
+                buffer.removeFirst(3)
+            }
+        }
+        return String(decoding: buffer, as: UTF8.self)
+    }
+}
