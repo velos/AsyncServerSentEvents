@@ -23,3 +23,14 @@ jobs:
         run: swift test --parallel
       - name: Test coverage
         run: swift test --parallel --enable-code-coverage
+
+  linux:
+    name: Swift 6.0 on Linux
+    runs-on: ubuntu-24.04
+    container: swift:6.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build --build-tests
+      - name: Run tests
+        run: swift test --parallel

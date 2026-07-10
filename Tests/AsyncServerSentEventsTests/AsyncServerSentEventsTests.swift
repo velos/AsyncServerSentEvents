@@ -14,16 +14,22 @@ extension String {
         return stripped.joined(separator: "\n")
     }
 
-    var asyncBytes: URLSession.AsyncBytes {
-        get async throws {
-            let tempFile = FileManager.default.temporaryDirectory
-                            .appendingPathComponent(UUID().uuidString)
-            var normalized = unindented
-            if normalized.hasSuffix("\n") && !normalized.hasSuffix("\n\n") {
-                normalized.append("\n")
+    var byteStream: AsyncStream<UInt8> {
+        var normalized = unindented
+        if normalized.hasSuffix("\n") && !normalized.hasSuffix("\n\n") {
+            normalized.append("\n")
+        }
+        return Array(normalized.utf8).byteStream
+    }
+}
+
+extension [UInt8] {
+    var byteStream: AsyncStream<UInt8> {
+        AsyncStream { continuation in
+            for byte in self {
+                continuation.yield(byte)
             }
-            try normalized.data(using: .utf8)!.write(to: tempFile)
-            return try await URLSession.shared.bytes(from: tempFile).0
+            continuation.finish()
         }
     }
 }
@@ -33,7 +39,7 @@ struct SSEParsingTests {
 
     @Test("Basic events should parse into Event structs")
     func basicEvents() async throws {
-        let bytes = try await SSETestData.basicEvents.asyncBytes
+        let bytes = SSETestData.basicEvents.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -48,13 +54,12 @@ struct SSEParsingTests {
         // Single event with concatenated data fields
         #expect(events[0].id == nil)
         #expect(events[0].name == nil)
-        #expect(events[0].comment == nil)
         #expect(events[0].data == expectedData)
     }
 
     @Test("Events with IDs should parse ID field")
     func eventIds() async throws {
-        let bytes = try await SSETestData.eventIds.asyncBytes
+        let bytes = SSETestData.eventIds.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -79,7 +84,7 @@ struct SSEParsingTests {
 
     @Test("Named events should parse event field")
     func namedEvents() async throws {
-        let bytes = try await SSETestData.namedEvents.asyncBytes
+        let bytes = SSETestData.namedEvents.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -100,7 +105,7 @@ struct SSEParsingTests {
 
     @Test("Comments should be ignored")
     func comments() async throws {
-        let bytes = try await SSETestData.comments.asyncBytes
+        let bytes = SSETestData.comments.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -109,7 +114,7 @@ struct SSEParsingTests {
 
     @Test("Comment-only blocks should not emit events")
     func commentOnlyEvent() async throws {
-        let bytes = try await SSETestData.commentOnlyEvent.asyncBytes
+        let bytes = SSETestData.commentOnlyEvent.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -118,7 +123,7 @@ struct SSEParsingTests {
 
     @Test("Multiple data fields should concatenate with newlines")
     func multipleDataFields() async throws {
-        let bytes = try await SSETestData.multipleDataFields.asyncBytes
+        let bytes = SSETestData.multipleDataFields.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -135,7 +140,7 @@ struct SSEParsingTests {
 
     @Test("Mixed fields should parse all fields correctly")
     func mixedFields() async throws {
-        let bytes = try await SSETestData.mixedFields.asyncBytes
+        let bytes = SSETestData.mixedFields.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -143,7 +148,6 @@ struct SSEParsingTests {
 
         #expect(events[0].id == "42")  // First and only ID field
         #expect(events[0].name == "update")  // First and only event field
-        #expect(events[0].comment == nil)
         #expect(events[0].data == """
         mixed field event
         more data
@@ -152,7 +156,7 @@ struct SSEParsingTests {
 
     @Test("Data fields with leading spaces should preserve spacing")
     func dataLeadingSpaces() async throws {
-        let bytes = try await SSETestData.dataLeadingSpaces.asyncBytes
+        let bytes = SSETestData.dataLeadingSpaces.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -162,7 +166,7 @@ struct SSEParsingTests {
 
     @Test("Special characters should be preserved in all fields")
     func specialCharacters() async throws {
-        let bytes = try await SSETestData.specialCharacters.asyncBytes
+        let bytes = SSETestData.specialCharacters.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -177,7 +181,7 @@ struct SSEParsingTests {
 
     @Test("Complete event should parse all fields")
     func completeEvent() async throws {
-        let bytes = try await SSETestData.completeEvent.asyncBytes
+        let bytes = SSETestData.completeEvent.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -194,7 +198,7 @@ struct SSEParsingTests {
 
     @Test("Empty data fields should create empty events")
     func emptyDataFields() async throws {
-        let bytes = try await SSETestData.emptyDataFields.asyncBytes
+        let bytes = SSETestData.emptyDataFields.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -204,7 +208,7 @@ struct SSEParsingTests {
 
     @Test("Parser should handle [DONE] data")
     func doneAtEnd() async throws {
-        let bytes = try await SSETestData.doneAtEnd.asyncBytes
+        let bytes = SSETestData.doneAtEnd.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -218,7 +222,7 @@ struct SSEParsingTests {
 
     @Test("Retry field should update state")
     func retryFieldState() async throws {
-        let bytes = try await SSETestData.retryIntervals.asyncBytes
+        let bytes = SSETestData.retryIntervals.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         _ = try await sse.collect()
 
@@ -228,7 +232,7 @@ struct SSEParsingTests {
 
     @Test("Last event ID should update state")
     func lastEventIdState() async throws {
-        let bytes = try await SSETestData.lastEventIdUpdates.asyncBytes
+        let bytes = SSETestData.lastEventIdUpdates.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -241,7 +245,7 @@ struct SSEParsingTests {
 
     @Test("Line endings should handle CR, CRLF, and LF")
     func lineEndingVariants() async throws {
-        let bytes = try await SSETestData.lineEndingVariants.asyncBytes
+        let bytes = SSETestData.lineEndingVariants.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -255,7 +259,7 @@ struct SSEParsingTests {
 
     @Test("Missing trailing blank line should discard final event")
     func noTrailingBlankLine() async throws {
-        let bytes = try await SSETestData.noTrailingBlankLine.asyncBytes
+        let bytes = SSETestData.noTrailingBlankLine.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
@@ -264,11 +268,11 @@ struct SSEParsingTests {
 
     @Test("Events should be Hashable")
     func eventHashable() async throws {
-        let event1 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
-        let event2 = AsyncServerSentEvents.Event(id: "1", name: "test", comment: "comment", data: "data")
-        let event3 = AsyncServerSentEvents.Event(id: "2", name: "test", comment: "comment", data: "data")
+        let event1 = ServerSentEvent(id: "1", name: "test", data: "data")
+        let event2 = ServerSentEvent(id: "1", name: "test", data: "data")
+        let event3 = ServerSentEvent(id: "2", name: "test", data: "data")
 
-        var eventSet = Set<AsyncServerSentEvents.Event>()
+        var eventSet = Set<ServerSentEvent>()
         eventSet.insert(event1)
         eventSet.insert(event2)
         eventSet.insert(event3)
@@ -280,7 +284,7 @@ struct SSEParsingTests {
 
     @Test("Whitespace-only lines should be ignored")
     func whitespaceOnlyLines() async throws {
-        let bytes = try await SSETestData.whitespaceOnlyLines.asyncBytes
+        let bytes = SSETestData.whitespaceOnlyLines.byteStream
         let sse = AsyncServerSentEvents(bytes: bytes)
         let events = try await sse.collect()
 
