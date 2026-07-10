@@ -66,6 +66,20 @@ struct URLSessionExtensionTests {
         #expect(prepared.value(forHTTPHeaderField: "Last-Event-ID") == nil)
     }
 
+    @Test("An explicitly cleared last event ID should remove a caller-set header")
+    func preparedRequestClearsStaleLastEventId() {
+        var request = URLRequest(url: URL(string: "https://example.com/sse")!)
+        request.setValue("stale", forHTTPHeaderField: "Last-Event-ID")
+
+        // The stream cleared the ID with an empty id: field.
+        let cleared = SSERequest.prepared(request, lastEventId: "")
+        #expect(cleared.value(forHTTPHeaderField: "Last-Event-ID") == nil)
+
+        // With no ID tracked at all, the caller's header is left untouched.
+        let untouched = SSERequest.prepared(request, lastEventId: nil)
+        #expect(untouched.value(forHTTPHeaderField: "Last-Event-ID") == "stale")
+    }
+
     @Test("Response validation should reject non-200 status codes")
     func validationRejectsBadStatus() throws {
         let url = URL(string: "https://example.com/sse")!
@@ -89,6 +103,21 @@ struct URLSessionExtensionTests {
 
         #expect(throws: SSEError.unacceptableContentType("text/html")) {
             try SSERequest.validate(response)
+        }
+    }
+
+    @Test("Response validation should reject types that merely share the SSE prefix")
+    func validationRejectsPrefixLookalikes() throws {
+        let url = URL(string: "https://example.com/sse")!
+        for contentType in ["text/event-stream+json", "text/event-streaming"] {
+            let response = HTTPURLResponse(
+                url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": contentType]
+            )!
+
+            #expect(throws: SSEError.unacceptableContentType(contentType)) {
+                try SSERequest.validate(response)
+            }
         }
     }
 

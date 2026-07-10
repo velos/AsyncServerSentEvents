@@ -21,8 +21,11 @@ enum SSERequest {
         if request.value(forHTTPHeaderField: "Cache-Control") == nil {
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         }
-        if let lastEventId, !lastEventId.isEmpty {
-            request.setValue(lastEventId, forHTTPHeaderField: "Last-Event-ID")
+        if let lastEventId {
+            // Per spec, the header is only sent when the last event ID string is
+            // non-empty. An explicitly empty ID (the stream cleared it) must also
+            // remove any Last-Event-ID header the caller set on the request.
+            request.setValue(lastEventId.isEmpty ? nil : lastEventId, forHTTPHeaderField: "Last-Event-ID")
         }
         return request
     }
@@ -36,7 +39,14 @@ enum SSERequest {
             throw SSEError.unacceptableStatusCode(http.statusCode)
         }
         let contentType = http.value(forHTTPHeaderField: "Content-Type")
-        guard let contentType, contentType.lowercased().hasPrefix("text/event-stream") else {
+        // The media type must be exactly text/event-stream; only parameters may
+        // follow (e.g. "text/event-stream; charset=utf-8"). A bare prefix match
+        // would wrongly accept types like text/event-stream+json.
+        let mediaType = contentType?
+            .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+        guard mediaType == "text/event-stream" else {
             throw SSEError.unacceptableContentType(contentType)
         }
     }
