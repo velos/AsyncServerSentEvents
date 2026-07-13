@@ -6,11 +6,11 @@ import PackageDescription
 let package = Package(
     name: "AsyncServerSentEvents",
     platforms: [
-        .iOS(.v17),
-        .tvOS(.v17),
-        .macOS(.v14),
-        .watchOS(.v9),
-        .macCatalyst(.v17),
+        .iOS(.v13),
+        .tvOS(.v13),
+        .macOS(.v10_15),
+        .watchOS(.v6),
+        .macCatalyst(.v13),
         .visionOS(.v1)
     ],
     products: [

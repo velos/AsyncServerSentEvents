@@ -66,6 +66,7 @@ enum SSERequest {
 }
 
 #if canImport(Darwin)
+@available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, macCatalyst 15.0, visionOS 1.0, *)
 public extension URLSession.AsyncBytes {
     /// Parses these bytes as a server-sent event stream.
     func sse() -> AsyncServerSentEvents<URLSession.AsyncBytes> {
