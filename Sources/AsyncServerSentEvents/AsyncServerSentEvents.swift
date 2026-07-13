@@ -37,10 +37,6 @@ public struct ServerSentEvent: Hashable, Sendable {
         self.data = data
         self.lastEventId = lastEventId
     }
-
-    mutating func appending(dataLine: String) {
-        data.append(dataLine + "\n")
-    }
 }
 
 /// Stream-level state observed while parsing, shared between the parser and the consumer.
@@ -64,7 +60,9 @@ public actor SSEState {
 ///
 /// Parsing is driven lazily by iteration: bytes are only read from the underlying
 /// sequence as events are requested, cancellation propagates to the byte stream,
-/// and errors from the byte stream are rethrown to the consumer.
+/// and errors from the byte stream are rethrown to the consumer. The parsing
+/// itself is performed by ``SSEParser``, which is also available directly for
+/// non-async byte sources.
 ///
 /// The sequence is single-pass: iterate it once.
 public struct AsyncServerSentEvents<Base: AsyncSequence>: AsyncSequence where Base.Element == UInt8 {
@@ -82,138 +80,62 @@ public struct AsyncServerSentEvents<Base: AsyncSequence>: AsyncSequence where Ba
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(lines: SSELineIterator(base: base.makeAsyncIterator()), state: state)
+        AsyncIterator(base: base.makeAsyncIterator(), state: state)
     }
 
     public struct AsyncIterator: AsyncIteratorProtocol {
-        var lines: SSELineIterator<Base.AsyncIterator>
+        var base: Base.AsyncIterator
+        var parser = SSEParser()
         let state: SSEState
 
-        /// The last event ID buffer; per spec this persists across events and is
-        /// only committed to ``SSEState`` when a block is dispatched.
-        var lastEventIdBuffer: String?
-        var committedLastEventId: String?
+        private var mirroredRetryInterval: Int?
+        private var mirroredLastEventId: String?
+        private var finished = false
+
+        init(base: Base.AsyncIterator, state: SSEState) {
+            self.base = base
+            self.state = state
+        }
 
         public mutating func next() async throws -> ServerSentEvent? {
-            var event = ServerSentEvent(data: "")
+            guard !finished else { return nil }
 
-            while let line = try await lines.next() {
-                guard !line.isEmpty else {
-                    // Blank line: dispatch the block. The last event ID commits
-                    // even when no event is emitted (e.g. an id-only block).
-                    if let id = lastEventIdBuffer, id != committedLastEventId {
-                        committedLastEventId = id
-                        await state.updateLastEventId(id)
-                    }
-
-                    guard !event.data.isEmpty else {
-                        event = ServerSentEvent(data: "")
-                        continue
-                    }
-
-                    if event.data.hasSuffix("\n") {
-                        event.data.removeLast()
-                    }
-                    event.lastEventId = lastEventIdBuffer
+            while let byte = try await base.next() {
+                let event = parser.consume(byte)
+                await mirrorStateIfChanged()
+                if let event {
                     return event
-                }
-
-                var elements = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-                if elements.count == 1 {
-                    elements.append("")
-                }
-
-                let field = String(elements[0])
-                var value = String(elements[1])
-                if value.first == " " {
-                    value.removeFirst()
-                }
-
-                switch field {
-                case "data":
-                    event.appending(dataLine: value)
-                case "event":
-                    event.name = value
-                case "id":
-                    if !value.contains("\0") {
-                        event.id = value
-                        lastEventIdBuffer = value
-                    }
-                case "retry":
-                    if !value.isEmpty,
-                       value.unicodeScalars.allSatisfy({ $0.value >= 48 && $0.value <= 57 }),
-                       let milliseconds = Int(value) {
-                        await state.updateRetryInterval(milliseconds)
-                    }
-                default:
-                    // Comment lines (empty field name) and unknown fields are ignored.
-                    continue
                 }
             }
 
-            // End of stream: an incomplete final block is discarded per spec,
-            // including any id it carried.
+            // End of stream: the incomplete final block is discarded per spec,
+            // but a trailing retry field still takes effect.
+            finished = true
+            parser.finish()
+            await mirrorStateIfChanged()
             return nil
+        }
+
+        /// Keeps the public ``SSEState`` actor in sync with the parser,
+        /// hopping to the actor only when a value actually changed.
+        private mutating func mirrorStateIfChanged() async {
+            if parser.retryInterval != mirroredRetryInterval, let interval = parser.retryInterval {
+                mirroredRetryInterval = interval
+                await state.updateRetryInterval(interval)
+            }
+            if parser.lastEventId != mirroredLastEventId, let id = parser.lastEventId {
+                mirroredLastEventId = id
+                await state.updateLastEventId(id)
+            }
         }
     }
 }
 
 extension AsyncServerSentEvents: Sendable where Base: Sendable {}
 
-/// Splits a byte stream into lines terminated by LF, CR, or CRLF, decoding
-/// UTF-8 with replacement characters and stripping a single leading BOM,
-/// as required by the specification.
-///
-/// The state machine treats CR as an immediate line terminator and swallows an
-/// LF that directly follows it, so `CR LF` yields one line boundary while
-/// `CR CR` yields two. Only CR, LF, and CRLF are boundaries — other Unicode
-/// line separators (NEL, U+2028, U+2029) are ordinary content bytes per spec.
-struct SSELineIterator<BaseIterator: AsyncIteratorProtocol> where BaseIterator.Element == UInt8 {
-    var base: BaseIterator
-    var buffer: [UInt8] = []
-    var sawCarriageReturn = false
-    var isFirstLine = true
-    var atEnd = false
-
-    mutating func next() async throws -> String? {
-        guard !atEnd else { return nil }
-
-        while true {
-            guard let byte = try await base.next() else {
-                atEnd = true
-                if buffer.isEmpty {
-                    return nil
-                }
-                return makeLine()
-            }
-
-            if sawCarriageReturn {
-                sawCarriageReturn = false
-                if byte == 0x0A { // LF completing a CRLF pair
-                    continue
-                }
-            }
-
-            switch byte {
-            case 0x0A:
-                return makeLine()
-            case 0x0D:
-                sawCarriageReturn = true
-                return makeLine()
-            default:
-                buffer.append(byte)
-            }
-        }
-    }
-
-    private mutating func makeLine() -> String {
-        defer { buffer.removeAll(keepingCapacity: true) }
-        if isFirstLine {
-            isFirstLine = false
-            if buffer.starts(with: [0xEF, 0xBB, 0xBF]) {
-                buffer.removeFirst(3)
-            }
-        }
-        return String(decoding: buffer, as: UTF8.self)
+public extension AsyncSequence where Element == UInt8 {
+    /// Parses these bytes as a server-sent event stream.
+    func sse() -> AsyncServerSentEvents<Self> {
+        AsyncServerSentEvents(bytes: self)
     }
 }

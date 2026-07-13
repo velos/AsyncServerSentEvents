@@ -75,7 +75,6 @@ public struct EventSource: AsyncSequence, Sendable {
         var lastEventId: String?
 
         var current: AsyncServerSentEvents<SSEByteStream>.AsyncIterator?
-        var currentState: SSEState?
         var hasAttemptedConnection = false
         var finished = false
 
@@ -112,13 +111,13 @@ public struct EventSource: AsyncSequence, Sendable {
                         return event
                     }
                     // The server closed the stream cleanly: reconnect.
-                    await prepareForReconnect()
+                    prepareForReconnect()
                 } catch is CancellationError {
                     finished = true
                     throw CancellationError()
                 } catch {
                     // A network error mid-stream: reconnect.
-                    await prepareForReconnect()
+                    prepareForReconnect()
                 }
             }
         }
@@ -133,24 +132,22 @@ public struct EventSource: AsyncSequence, Sendable {
                 bytes.task.cancel()
                 throw error
             }
-            let sse = bytes.sse()
-            current = sse.makeAsyncIterator()
-            currentState = sse.state
+            current = bytes.sse().makeAsyncIterator()
         }
 
-        private mutating func prepareForReconnect() async {
+        private mutating func prepareForReconnect() {
             // Pick up retry and id changes from blocks that never dispatched an
-            // event (retry-only or id-only blocks).
-            if let state = currentState {
-                if let interval = await state.retryInterval {
+            // event (retry-only or id-only blocks), read directly off the
+            // iterator's parser.
+            if let parser = current?.parser {
+                if let interval = parser.retryInterval {
                     retryInterval = interval
                 }
-                if let id = await state.lastEventId {
+                if let id = parser.lastEventId {
                     lastEventId = id
                 }
             }
             current = nil
-            currentState = nil
         }
     }
 }

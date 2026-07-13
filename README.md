@@ -53,13 +53,35 @@ for try await event in bytes.sse() {
 
 ### Parsing any byte stream
 
-The parser is generic over `AsyncSequence` with `UInt8` elements, so it isn't tied to `URLSession`:
+The parser is generic over `AsyncSequence` with `UInt8` elements, so it isn't tied to `URLSession`. Any byte sequence can be wrapped directly or via the `.sse()` convenience:
 
 ```swift
 let events = AsyncServerSentEvents(bytes: someByteSequence)
+// or equivalently:
+for try await event in someByteSequence.sse() { ... }
 ```
 
 Parsing is lazy and driven by iteration: bytes are only consumed as you request events, errors from the byte stream are rethrown to the consumer, and cancelling the consuming task stops the parse.
+
+### Incremental and buffered parsing (no async required)
+
+`SSEParser` is the synchronous core the async APIs are built on. Use it directly when bytes arrive through something other than an `AsyncSequence` — a delegate callback, a WebSocket frame — or when you already have the whole payload:
+
+```swift
+// Incremental: feed chunks as they arrive.
+var parser = SSEParser()
+for event in parser.consume(chunk) {
+    print(event.type, event.data)
+}
+// At end of stream: discards an incomplete trailing block (per spec) and
+// resets for a new stream, keeping lastEventId/retryInterval for reconnection.
+parser.finish()
+
+// Buffered: parse a complete payload in one call.
+let events = SSEParser.parse(data)
+```
+
+`SSEParser` is a value type, never throws (malformed input is handled by the spec's own rules), and exposes `lastEventId` and `retryInterval` for implementing reconnection.
 
 ## Events
 
@@ -72,6 +94,7 @@ Each `ServerSentEvent` carries:
 
 ## Supported Features
 
+- [x] Synchronous incremental parsing (`SSEParser`) usable without async sequences
 - [x] WHATWG-compliant line parsing (`CR`, `LF`, `CRLF`)
 - [x] UTF-8 decoding with replacement characters and leading BOM removal
 - [x] Strict field parsing (`data`, `id`, `event`, `retry`) with single-space value trim
