@@ -22,11 +22,13 @@ struct SSEParserTests {
         var parser = SSEParser()
         let syncEvents = parser.consume(bytes)
         parser.finish()
+        let asyncLastEventId = await sse.state.lastEventId
+        let asyncRetryInterval = await sse.state.retryInterval
 
         #expect(syncEvents == asyncEvents)
         #expect(SSEParser.parse(bytes) == asyncEvents)
-        #expect(parser.lastEventId == (await sse.state.lastEventId))
-        #expect(parser.retryInterval == (await sse.state.retryInterval))
+        #expect(parser.lastEventId == asyncLastEventId)
+        #expect(parser.retryInterval == asyncRetryInterval)
     }
 
     @Test("Chunk boundaries should not affect parsing", arguments: [1, 2, 3, 7, 16, 1024])
