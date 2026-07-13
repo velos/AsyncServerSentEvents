@@ -10,68 +10,73 @@ import FoundationNetworking
 @Suite("Line Splitting")
 struct SSELineSplittingTests {
 
-    private func splitLines(_ bytes: [UInt8]) async throws -> [String] {
-        var iterator = SSELineIterator(base: bytes.byteStream.makeAsyncIterator())
+    private func splitLines(_ bytes: [UInt8]) -> [String] {
+        var splitter = SSELineSplitter()
         var lines: [String] = []
-        while let line = try await iterator.next() {
-            lines.append(line)
+        for byte in bytes {
+            if let line = splitter.consume(byte) {
+                lines.append(String(decoding: line, as: UTF8.self))
+            }
+        }
+        if let line = splitter.finish() {
+            lines.append(String(decoding: line, as: UTF8.self))
         }
         return lines
     }
 
-    private func splitLines(_ text: String) async throws -> [String] {
-        try await splitLines(Array(text.utf8))
+    private func splitLines(_ text: String) -> [String] {
+        splitLines(Array(text.utf8))
     }
 
     @Test("All three terminators should be equivalent")
-    func mixedTerminators() async throws {
-        let lines = try await splitLines("a\rb\nc\r\nd")
+    func mixedTerminators() {
+        let lines = splitLines("a\rb\nc\r\nd")
         #expect(lines == ["a", "b", "c", "d"])
     }
 
     @Test("Empty lines should be preserved for every terminator style")
-    func emptyLines() async throws {
+    func emptyLines() {
         // a CR | CR LF (empty line) | LF (empty line) | b (unterminated)
-        let lines = try await splitLines("a\r\r\n\nb")
+        let lines = splitLines("a\r\r\n\nb")
         #expect(lines == ["a", "", "", "b"])
 
-        let crlfOnly = try await splitLines("\r\n\r\n")
+        let crlfOnly = splitLines("\r\n\r\n")
         #expect(crlfOnly == ["", ""])
     }
 
     @Test("A CRLF pair should produce exactly one boundary")
-    func crlfIsSingleBoundary() async throws {
-        let lines = try await splitLines("a\r\nb")
+    func crlfIsSingleBoundary() {
+        let lines = splitLines("a\r\nb")
         #expect(lines == ["a", "b"])
     }
 
     @Test("Consecutive CRs should each terminate a line")
-    func consecutiveCRs() async throws {
-        let lines = try await splitLines("a\r\rb")
+    func consecutiveCRs() {
+        let lines = splitLines("a\r\rb")
         #expect(lines == ["a", "", "b"])
     }
 
     @Test("Trailing terminators at end of stream should not add lines")
-    func trailingTerminators() async throws {
-        #expect(try await splitLines("a\r") == ["a"])
-        #expect(try await splitLines("a\n") == ["a"])
-        #expect(try await splitLines("a\r\n") == ["a"])
+    func trailingTerminators() {
+        #expect(splitLines("a\r") == ["a"])
+        #expect(splitLines("a\n") == ["a"])
+        #expect(splitLines("a\r\n") == ["a"])
     }
 
     @Test("Edge inputs")
-    func edgeInputs() async throws {
-        #expect(try await splitLines("") == [])
-        #expect(try await splitLines("\n") == [""])
-        #expect(try await splitLines("\r") == [""])
-        #expect(try await splitLines("\r\n") == [""])
-        #expect(try await splitLines("a") == ["a"])
+    func edgeInputs() {
+        #expect(splitLines("") == [])
+        #expect(splitLines("\n") == [""])
+        #expect(splitLines("\r") == [""])
+        #expect(splitLines("\r\n") == [""])
+        #expect(splitLines("a") == ["a"])
     }
 
     @Test("Other Unicode line separators should not split lines")
     func unicodeSeparatorsAreContent() async throws {
         // NEL (U+0085), LINE SEPARATOR (U+2028), PARAGRAPH SEPARATOR (U+2029)
         let text = "a\u{0085}b\u{2028}c\u{2029}d"
-        let lines = try await splitLines(text + "\n")
+        let lines = splitLines(text + "\n")
         #expect(lines == [text])
 
         // And they must survive through the full parser as data content.

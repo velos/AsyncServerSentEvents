@@ -36,11 +36,6 @@ public struct SSEByteStream: AsyncSequence, @unchecked Sendable {
             return current[current.startIndex + offset]
         }
     }
-
-    /// Parses these bytes as a server-sent event stream.
-    public func sse() -> AsyncServerSentEvents<SSEByteStream> {
-        AsyncServerSentEvents(bytes: self)
-    }
 }
 
 /// Opens streaming connections through a session-level delegate so that byte

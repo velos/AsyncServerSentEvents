@@ -65,15 +65,6 @@ enum SSERequest {
     }
 }
 
-#if canImport(Darwin)
-public extension URLSession.AsyncBytes {
-    /// Parses these bytes as a server-sent event stream.
-    func sse() -> AsyncServerSentEvents<URLSession.AsyncBytes> {
-        AsyncServerSentEvents(bytes: self)
-    }
-}
-#endif
-
 public extension URLSession {
     /// Opens a server-sent event stream, sending the `Accept: text/event-stream`
     /// header and validating the response status code and content type.
